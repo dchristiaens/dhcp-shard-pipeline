@@ -7,3 +7,4 @@ Dependencies:
 - The [SHARD-SVR](https://github.com/dchristiaens/shard-recon) motion correction module for MRtrix3.
 - [FSL](https://fsl.fmrib.ox.ac.uk)
 
+Questions and support: daan.christiaens@kuleuven.be
