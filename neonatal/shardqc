@@ -1,0 +1,79 @@
+#!/usr/bin/zsh
+
+if [ $# -eq 0 ]; then
+    cat <<HELP_PAGE
+This script calculates QC metrics of the processed subjects.
+
+USAGE: 
+  $ shardqc <subjects.txt>
+
+  Where subjects.txt contains subject IDs in the first column and session IDs in the second column.
+
+HELP_PAGE
+    exit 1
+fi
+
+# set up environment
+source local-config.sh
+
+setopt NULL_GLOB
+
+
+# run QC
+for sub ses in $(<$1); do
+    OUTPATHSUB=$OUTPATH/$sub/$ses
+    if [ -d $OUTPATHSUB ]; then
+        # Calculate SNR
+        if [ ! -f "$OUTPATHSUB/noiselevel.mif.gz" ]; then
+            INPUT=$(find $INPATH/$sub/$ses/Dy-Di -type f -name "*dhcp[5678]mbdti2sense_Er.nii")
+            mrmath -axis 3 $INPUT rms $OUTPATHSUB/noiselevel.mif.gz -quiet
+        fi
+        MNL=$(mrstats $OUTPATHSUB/noiselevel.mif.gz -mask $OUTPATHSUB/reconmask.mif.gz -output median -quiet)
+        MSL=$(dwiextract -bzero $OUTPATHSUB/postmc-dwi.mif.gz - -quiet | mrmath -axis 3 - mean - -quiet | mrstats - -mask $OUTPATHSUB/reconmask.mif.gz -output median -quiet)
+        SNR=$(mrcalc $MSL $MNL -divide)
+        # Calculate QC
+        QC=$(motionstats2 -packs 3 -shift 2 $OUTPATHSUB/motion.txt $OUTPATHSUB/sliceweights.txt)
+        # Print
+        NV=$(mrinfo -size $OUTPATHSUB/premc.mif.gz | awk '{print $4}')
+        if [ $NV -eq 300 ]; then
+            echo "$sub $ses $SNR $QC"
+        else
+            echo "$sub $ses $SNR $QC incomplete"
+        fi
+        # Save as json
+        mkdir -p $OUTPATHSUB/qc
+        echo "{" > $OUTPATHSUB/qc/qc.json
+        echo "  \"subject\": \"$sub\"," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"session\": \"$ses\"," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"SNR\": $SNR," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"translation\": $(echo $QC | awk '{print $1}')," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"rotation\": $(echo $QC | awk '{print $2}')," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"outliers\": $(echo $QC | awk '{print $3}')," >> $OUTPATHSUB/qc/qc.json
+        echo "  \"complete\": $([ $NV -eq 300 ] && echo "true" || echo "false")" >> $OUTPATHSUB/qc/qc.json
+        echo "}" >> $OUTPATHSUB/qc/qc.json
+    else
+        INPATHSUB=$INPATH/$sub/$ses/Dy-Di
+        # Find input data
+        INPUT=""
+        if [ -d $INPATHSUB ]; then
+            INPUT=$(find $INPATHSUB -type f -name "*dhcp[5678]mbdti2sense_Aq.nii")
+        fi
+        if [ -z "$INPUT" ]; then
+            echo "$sub $ses     missing"
+            continue
+        fi
+        COMPLETE=0
+        while IFS= read -r fn; do
+            NV=$(mrinfo -size $fn | awk '{print $4}')
+            if [ $NV -eq 300 ]; then
+                COMPLETE=1
+            fi
+        done <<< "$INPUT"
+        if [ $COMPLETE -eq 0 ]; then
+            echo "$sub $ses     incomplete"
+        else
+            echo "$sub $ses     error"
+        fi
+    fi
+done
+
