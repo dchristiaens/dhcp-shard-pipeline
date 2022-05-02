@@ -1,0 +1,29 @@
+#!/usr/bin/zsh
+
+if [ $# -eq 0 ]; then
+    cat <<HELP_PAGE
+This script processes a list of dHCP subjects for motion correction in batches of size NBATCH.
+
+USAGE: 
+  $ shardprocessing <subjects.txt>
+
+  Where subjects.txt contains subject IDs in the first column and session IDs in the second column.
+
+HELP_PAGE
+    exit 1
+fi
+
+# set up environment
+source local-config.sh
+
+# preprocessing
+for sub ses in $(<$1); do
+    sem -u -j $NBATCH nice -n 5 ./runpreproc.sh $sub $ses
+done
+sem --wait
+
+# motion correction
+for sub ses in $(<$1); do
+    nice -n 5 ./runmc.sh $sub $ses
+done
+
