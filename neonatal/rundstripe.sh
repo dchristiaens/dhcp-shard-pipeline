@@ -14,7 +14,7 @@
 source local-config.sh
 
 INPATHSUB=$OUTPATH/$1/$2
-OUTPATHSUB=$DSOUTPATH/$1/$2
+OUTPATHSUB=$OUTPATH/$1/$2
 
 # skip if already done
 [ -e "${OUTPATHSUB}"/postmc_dstriped-dwi.nii.gz ] && exit 0
